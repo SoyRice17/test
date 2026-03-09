@@ -1,0 +1,14 @@
+{
+  "name": "ios-pwa-push-test",
+  "version": "1.0.0",
+  "description": "Minimal PWA push notification test app for iPhone",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/sw.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "web-push": "^3.6.7"
+  }
+}

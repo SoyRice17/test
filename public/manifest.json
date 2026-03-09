@@ -1,0 +1,8 @@
+{
+  "name": "PWA iPhone 알림 테스트",
+  "short_name": "PWA Push",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827"
+}
