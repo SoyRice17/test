@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111827" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>PWA iPhone 알림 테스트</title>
+    <style>
+      body { font-family: sans-serif; margin: 2rem; line-height: 1.5; }
+      button { margin-right: 0.5rem; margin-bottom: 0.5rem; padding: 0.7rem 1rem; }
+      code { background: #f3f4f6; padding: 0.1rem 0.3rem; }
+      #status { white-space: pre-wrap; border: 1px solid #ddd; padding: 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <h1>PWA iPhone 알림 테스트</h1>
+    <p>
+      iOS에서는 <strong>홈 화면에 추가된 PWA</strong>에서만 알림 권한 요청이 가능합니다.
+    </p>
+
+    <button id="btn-install-hint">설치 방법 보기</button>
+    <button id="btn-enable">1) 알림 권한 + 구독</button>
+    <button id="btn-send">2) 테스트 알림 보내기</button>
+
+    <h3>상태</h3>
+    <div id="status">초기화 중...</div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
