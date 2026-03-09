@@ -4,6 +4,7 @@
   "description": "Eisenhower todo list PWA",
   "main": "server.js",
   "scripts": {
+    "prestart": "npm install",
     "start": "node server.js",
     "check": "node --check server.js && node --check public/sw.js && node --check public/app.js"
   },
