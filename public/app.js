@@ -1,182 +1,320 @@
+const STORAGE_KEY = 'eisenhower_tasks_v1';
+const SETTINGS_KEY = 'eisenhower_settings_v1';
+
+const quadrantMeta = {
+  Q1: '중요+긴급',
+  Q2: '중요+비긴급',
+  Q3: '비중요+긴급',
+  Q4: '비중요+비긴급'
+};
+
+let tasks = load(STORAGE_KEY, []);
+let settings = load(SETTINGS_KEY, { hideCompletedTasks: false });
+const timers = new Map();
+
+const quadrantsEl = document.getElementById('quadrants');
+const taskDialog = document.getElementById('task-dialog');
+const settingsDialog = document.getElementById('settings-dialog');
+const form = document.getElementById('task-form');
 const statusEl = document.getElementById('status');
-const btnInstallHint = document.getElementById('btn-install-hint');
-const btnEnable = document.getElementById('btn-enable');
-const btnSend = document.getElementById('btn-send');
 
-const setStatus = (message) => {
-  statusEl.textContent = message;
+const showToast = (msg) => {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => { el.style.display = 'none'; }, 1600);
 };
 
-const isStandaloneMode = () => {
-  const byNavigator = typeof navigator.standalone === 'boolean' && navigator.standalone;
-  const byMediaQuery = window.matchMedia('(display-mode: standalone)').matches;
-  return byNavigator || byMediaQuery;
-};
-
-const getIosVersion = () => {
-  const iosMatch = navigator.userAgent.match(/OS (\d+)[._](\d+)/i);
-  if (!iosMatch) {
-    return null;
-  }
-
-  return {
-    major: Number(iosMatch[1]),
-    minor: Number(iosMatch[2])
-  };
-};
-
-const compareVersion = (current, min) => {
-  if (!current) return -1;
-  if (current.major !== min.major) {
-    return current.major > min.major ? 1 : -1;
-  }
-  if (current.minor !== min.minor) {
-    return current.minor > min.minor ? 1 : -1;
-  }
-  return 0;
-};
-
-const validatePushEnvironment = () => {
-  const errors = [];
-  const warnings = [];
-  const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  if (!window.isSecureContext) {
-    errors.push('HTTPS 환경이 아닙니다. iPhone 실기기에서는 HTTPS(또는 localhost)에서만 동작합니다.');
-  }
-
-  if (!('Notification' in window)) {
-    errors.push('이 브라우저는 Notification API를 지원하지 않습니다.');
-  }
-
-  if (!('serviceWorker' in navigator)) {
-    errors.push('이 브라우저는 Service Worker를 지원하지 않습니다.');
-  }
-
-  if (!('PushManager' in window)) {
-    errors.push('이 브라우저는 Push API를 지원하지 않습니다.');
-  }
-
-  if (isIos) {
-    const version = getIosVersion();
-    if (compareVersion(version, { major: 16, minor: 4 }) < 0) {
-      errors.push('iOS 16.4 이상에서만 웹 푸시를 지원합니다. iOS를 업데이트해 주세요.');
-    }
-
-    if (!isStandaloneMode()) {
-      errors.push('Safari 탭에서는 권한 요청이 차단됩니다. 홈 화면에 추가 후 앱 아이콘으로 실행하세요.');
-    }
-  } else {
-    warnings.push('현재 iOS 기기가 아닙니다. iPhone 실기기에서 최종 검증하세요.');
-  }
-
-  return { errors, warnings };
-};
-
-const renderValidationStatus = () => {
-  const { errors, warnings } = validatePushEnvironment();
-  const lines = [];
-
-  if (errors.length === 0) {
-    lines.push('환경 점검 통과 ✅');
-  } else {
-    lines.push('환경 점검 실패 ❌');
-    errors.forEach((error) => lines.push(`- ${error}`));
-  }
-
-  warnings.forEach((warning) => lines.push(`- 참고: ${warning}`));
-  setStatus(lines.join('\n'));
-
-  return errors.length === 0;
-};
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-
-  return outputArray;
+function load(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch { return fallback; }
 }
 
-btnInstallHint.addEventListener('click', () => {
-  alert('Safari 공유 버튼 → 홈 화면에 추가 후, 홈 화면 아이콘으로 앱을 다시 실행하세요.');
-});
+function saveAll() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
 
-btnEnable.addEventListener('click', async () => {
-  try {
-    if (!renderValidationStatus()) {
-      return;
-    }
+function nowIso() { return new Date().toISOString(); }
+function uid() { return crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()); }
 
-    const swReg = await navigator.serviceWorker.register('/sw.js');
-    const configRes = await fetch('/config');
-    const { vapidPublicKey } = await configRes.json();
+function getNotificationEligibility(task) {
+  return task.notificationEnabled && task.date && task.time;
+}
 
-    if (!vapidPublicKey) {
-      setStatus('서버에 VAPID_PUBLIC_KEY가 설정되지 않았습니다. README를 확인하세요.');
-      return;
-    }
+function requestNotificationPermissionIfNeeded() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') Notification.requestPermission();
+}
 
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      setStatus('알림 권한이 거부되었습니다. iPhone 설정에서 허용하세요.');
-      return;
-    }
+function scheduleNotification(task) {
+  if (!('Notification' in window)) return;
+  clearNotification(task.id);
+  if (!getNotificationEligibility(task)) return;
+  if (Notification.permission !== 'granted') return;
 
-    const subscription = await swReg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-    });
+  const when = new Date(`${task.date}T${task.time}:00`).getTime();
+  const delay = when - Date.now();
+  if (delay <= 0 || delay > 2147483647) return;
 
-    await fetch('/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subscription)
-    });
+  const id = setTimeout(() => {
+    new Notification(`할 일 알림: ${task.title}`, { body: task.description || '일정 시간이 되었습니다.' });
+  }, delay);
+  timers.set(task.id, id);
+}
 
-    setStatus('구독 완료 ✅\n이제 "테스트 알림 보내기"를 누르세요.');
-  } catch (error) {
-    if (error.name === 'NotAllowedError') {
-      setStatus('알림 권한이 차단되었습니다. iPhone 설정 > 알림에서 허용 후 다시 시도하세요.');
-      return;
-    }
-
-    if (error.name === 'InvalidStateError') {
-      setStatus('홈 화면 앱이 아닌 상태로 보입니다. 앱 아이콘으로 다시 실행한 뒤 시도하세요.');
-      return;
-    }
-
-    setStatus(`구독 중 오류: ${error.message} (${error.name})`);
+function clearNotification(taskId) {
+  if (timers.has(taskId)) {
+    clearTimeout(timers.get(taskId));
+    timers.delete(taskId);
   }
-});
+}
 
-btnSend.addEventListener('click', async () => {
-  try {
-    const res = await fetch('/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'iPhone PWA 푸시 테스트',
-        body: '정상 수신되면 성공입니다.',
-        url: '/'
-      })
-    });
+function repeatText(task) {
+  if (task.repeatType === 'weekly') return `매주 (${(task.repeatDaysOfWeek || []).join(',')})`;
+  if (task.repeatType === 'monthly') return `매월 ${task.repeatDayOfMonth || '-'}일`;
+  return ({ none: '반복없음', daily: '매일' })[task.repeatType] || '반복없음';
+}
 
-    const data = await res.json();
-    if (!res.ok) {
-      setStatus(`알림 전송 실패: ${data.message}`);
-      return;
+function sortTasks(list) {
+  return [...list].sort((a, b) => {
+    if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+    if (!!a.date !== !!b.date) return a.date ? -1 : 1;
+    const ad = new Date(`${a.date || '9999-12-31'}T${a.time || '23:59'}:00`).getTime();
+    const bd = new Date(`${b.date || '9999-12-31'}T${b.time || '23:59'}:00`).getTime();
+    if (ad !== bd) return ad - bd;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+}
+
+function render() {
+  const visible = settings.hideCompletedTasks ? tasks.filter((t) => !t.isCompleted) : tasks;
+  quadrantsEl.innerHTML = '';
+
+  Object.entries(quadrantMeta).forEach(([code, label]) => {
+    const section = document.createElement('section');
+    section.className = 'quadrant';
+    section.innerHTML = `<h2>${code} ${label}</h2>`;
+
+    const list = sortTasks(visible.filter((t) => t.quadrant === code));
+    if (list.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = '일정 없음';
+      section.appendChild(empty);
     }
 
-    setStatus('알림 전송 요청 완료 ✅\n잠금 화면/알림 센터를 확인하세요.');
-  } catch (error) {
-    setStatus(`알림 전송 오류: ${error.message}`);
+    list.forEach((task) => {
+      const card = document.createElement('article');
+      card.className = `task-card ${task.isCompleted ? 'completed' : ''}`;
+      const subDone = task.subtasks.filter((s) => s.isCompleted).length;
+      card.innerHTML = `
+        <div class="task-head">
+          <input type="checkbox" ${task.isCompleted ? 'checked' : ''} data-action="toggle" data-id="${task.id}" />
+          <span class="task-title">${escapeHtml(task.title)}</span>
+          <button data-action="edit" data-id="${task.id}" class="secondary">수정</button>
+        </div>
+        ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
+        <p class="task-meta">${task.date || '날짜없음'} ${task.time || ''} · ${repeatText(task)} · 체크리스트 ${subDone}/${task.subtasks.length}</p>
+        ${task.subtasks.length ? `<ul class="subtask-list">${task.subtasks.map((s)=>`<li style="text-decoration:${s.isCompleted?'line-through':'none'}">${escapeHtml(s.text)}</li>`).join('')}</ul>` : ''}
+      `;
+      section.appendChild(card);
+    });
+
+    quadrantsEl.appendChild(section);
+  });
+
+  statusEl.textContent = `전체 ${tasks.length}개 일정 / 완료 ${tasks.filter((t) => t.isCompleted).length}개`;
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function openTaskDialog(task) {
+  form.reset();
+  document.getElementById('subtask-editor').innerHTML = '';
+  document.getElementById('weekly-days').innerHTML = '';
+  ['일','월','화','수','목','금','토'].forEach((d, i) => {
+    const id = `day-${i}`;
+    const row = document.createElement('label');
+    row.className = 'row';
+    row.innerHTML = `<input type="checkbox" value="${i}" id="${id}" />${d}`;
+    document.getElementById('weekly-days').appendChild(row);
+  });
+
+  const editing = !!task;
+  document.getElementById('form-title').textContent = editing ? '일정 수정' : '일정 추가';
+  document.getElementById('btn-delete').style.display = editing ? 'inline-block' : 'none';
+
+  if (editing) {
+    document.getElementById('task-id').value = task.id;
+    document.getElementById('title').value = task.title;
+    document.getElementById('description').value = task.description || '';
+    document.getElementById('quadrant').value = task.quadrant;
+    document.getElementById('date').value = task.date || '';
+    document.getElementById('time').value = task.time || '';
+    document.getElementById('repeatType').value = task.repeatType;
+    document.getElementById('monthly-day').value = task.repeatDayOfMonth || '';
+    document.getElementById('notificationEnabled').checked = task.notificationEnabled;
+    (task.repeatDaysOfWeek || []).forEach((d) => {
+      const el = document.querySelector(`#weekly-days input[value="${d}"]`);
+      if (el) el.checked = true;
+    });
+    task.subtasks.forEach(addSubtaskInput);
   }
+
+  updateRepeatVisibility();
+  taskDialog.showModal();
+}
+
+function addSubtaskInput(subtask) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <input type="checkbox" ${subtask?.isCompleted ? 'checked' : ''} />
+    <input type="text" placeholder="세부 항목" value="${escapeHtml(subtask?.text || '')}" />
+    <button type="button" class="danger">삭제</button>
+  `;
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  document.getElementById('subtask-editor').appendChild(row);
+}
+
+function updateRepeatVisibility() {
+  const repeatType = document.getElementById('repeatType').value;
+  document.getElementById('weekly-wrap').style.display = repeatType === 'weekly' ? 'block' : 'none';
+  document.getElementById('monthly-wrap').style.display = repeatType === 'monthly' ? 'block' : 'none';
+}
+
+function collectSubtasks() {
+  return [...document.querySelectorAll('#subtask-editor .row')]
+    .map((row) => {
+      const [check, text] = row.querySelectorAll('input');
+      return {
+        id: uid(),
+        text: text.value.trim(),
+        isCompleted: check.checked,
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      };
+    })
+    .filter((s) => s.text);
+}
+
+function validateForm(task) {
+  if (!task.title.trim()) return '제목을 입력해주세요.';
+  if (task.repeatType === 'weekly' && task.repeatDaysOfWeek.length === 0) return '반복할 요일을 1개 이상 선택해주세요.';
+  if (task.repeatType === 'monthly' && !(task.repeatDayOfMonth >= 1 && task.repeatDayOfMonth <= 31)) return '반복할 날짜를 선택해주세요.';
+  if (task.notificationEnabled && !(task.date && task.time)) {
+    task.notificationEnabled = false;
+    showToast('알림은 날짜와 시간이 모두 필요하여 자동 OFF 되었습니다.');
+  }
+  return null;
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const id = document.getElementById('task-id').value;
+  const repeatType = document.getElementById('repeatType').value;
+  const task = {
+    id: id || uid(),
+    title: document.getElementById('title').value.trim(),
+    description: document.getElementById('description').value.trim(),
+    quadrant: document.getElementById('quadrant').value,
+    date: document.getElementById('date').value || undefined,
+    time: document.getElementById('time').value || undefined,
+    isCompleted: false,
+    completedAt: null,
+    notificationEnabled: document.getElementById('notificationEnabled').checked,
+    repeatType,
+    repeatDaysOfWeek: repeatType === 'weekly' ? [...document.querySelectorAll('#weekly-days input:checked')].map((el) => Number(el.value)) : [],
+    repeatDayOfMonth: repeatType === 'monthly' ? Number(document.getElementById('monthly-day').value) : undefined,
+    subtasks: collectSubtasks(),
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+
+  const existing = tasks.find((t) => t.id === task.id);
+  if (existing) {
+    task.isCompleted = existing.isCompleted;
+    task.completedAt = existing.completedAt;
+    task.createdAt = existing.createdAt;
+  }
+
+  const error = validateForm(task);
+  if (error) return showToast(error);
+
+  tasks = tasks.filter((t) => t.id !== task.id).concat(task);
+  saveAll();
+  scheduleNotification(task);
+  render();
+  taskDialog.close();
 });
 
-renderValidationStatus();
+document.getElementById('btn-add').addEventListener('click', () => openTaskDialog());
+document.getElementById('btn-cancel').addEventListener('click', () => taskDialog.close());
+document.getElementById('btn-delete').addEventListener('click', () => {
+  const id = document.getElementById('task-id').value;
+  tasks = tasks.filter((t) => t.id !== id);
+  clearNotification(id);
+  saveAll();
+  render();
+  taskDialog.close();
+});
+document.getElementById('btn-add-subtask').addEventListener('click', () => addSubtaskInput());
+document.getElementById('repeatType').addEventListener('change', updateRepeatVisibility);
+
+document.getElementById('btn-settings').addEventListener('click', () => {
+  document.getElementById('hideCompletedTasks').checked = settings.hideCompletedTasks;
+  document.getElementById('permission-status').textContent = `알림 권한 상태: ${('Notification' in window) ? Notification.permission : '지원 안 함'}`;
+  settingsDialog.showModal();
+});
+
+document.getElementById('btn-close-settings').addEventListener('click', (e) => {
+  e.preventDefault();
+  settings.hideCompletedTasks = document.getElementById('hideCompletedTasks').checked;
+  saveAll();
+  render();
+  settingsDialog.close();
+});
+
+quadrantsEl.addEventListener('click', (e) => {
+  const target = e.target;
+  const id = target.dataset.id;
+  const action = target.dataset.action;
+  if (!id || !action) return;
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+
+  if (action === 'edit') openTaskDialog(task);
+});
+
+quadrantsEl.addEventListener('change', (e) => {
+  const target = e.target;
+  if (target.dataset.action !== 'toggle') return;
+  const id = target.dataset.id;
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.isCompleted = target.checked;
+  task.completedAt = target.checked ? nowIso() : null;
+  task.updatedAt = nowIso();
+  if (task.isCompleted) {
+    clearNotification(task.id);
+    if (settings.hideCompletedTasks) showToast('일정이 완료되어 숨김 처리되었습니다.');
+  } else {
+    scheduleNotification(task);
+  }
+  saveAll();
+  render();
+});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {
+    statusEl.textContent = 'Service Worker 등록 실패';
+  });
+}
+
+requestNotificationPermissionIfNeeded();
+tasks.forEach(scheduleNotification);
+render();

@@ -3,29 +3,176 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#1f2937" />
     <link rel="manifest" href="/manifest.json" />
-    <title>PWA iPhone 알림 테스트</title>
+    <title>아이젠하워 투두 리스트</title>
     <style>
-      body { font-family: sans-serif; margin: 2rem; line-height: 1.5; }
-      button { margin-right: 0.5rem; margin-bottom: 0.5rem; padding: 0.7rem 1rem; }
-      code { background: #f3f4f6; padding: 0.1rem 0.3rem; }
-      #status { white-space: pre-wrap; border: 1px solid #ddd; padding: 0.75rem; }
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        margin: 0;
+        background: #f3f4f6;
+        color: #111827;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #1f2937;
+        color: #fff;
+        padding: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      h1 { font-size: 1rem; margin: 0; }
+      .header-actions button { margin-left: 0.4rem; }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 0.55rem 0.75rem;
+        cursor: pointer;
+        background: #2563eb;
+        color: #fff;
+      }
+      button.secondary { background: #6b7280; }
+      button.danger { background: #dc2626; }
+      main { padding: 0.9rem; max-width: 980px; margin: 0 auto; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 0.8rem;
+      }
+      .quadrant {
+        background: #fff;
+        border-radius: 14px;
+        padding: 0.7rem;
+        min-height: 220px;
+      }
+      .quadrant h2 { font-size: 0.95rem; margin: 0 0 0.5rem 0; }
+      .task-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 0.55rem;
+        margin-bottom: 0.5rem;
+        background: #f9fafb;
+      }
+      .task-head { display: flex; align-items: center; gap: 0.4rem; }
+      .task-title { font-weight: 600; flex: 1; }
+      .completed .task-title { text-decoration: line-through; opacity: 0.6; }
+      .task-meta { font-size: 0.78rem; color: #4b5563; margin: 0.35rem 0; }
+      .task-desc { font-size: 0.82rem; margin: 0.3rem 0; }
+      .subtask-list { padding-left: 1rem; margin: 0.3rem 0; font-size: 0.8rem; }
+      dialog {
+        width: min(680px, 96vw);
+        border: 0;
+        border-radius: 16px;
+        padding: 0;
+      }
+      .dialog-body { padding: 1rem; }
+      .field { margin-bottom: 0.7rem; }
+      .field label { display: block; font-size: 0.82rem; margin-bottom: 0.2rem; }
+      input, textarea, select {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 0.45rem;
+      }
+      .inline { display: flex; gap: 0.5rem; }
+      .inline > * { flex: 1; }
+      .row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+      .dialog-actions { display: flex; justify-content: space-between; margin-top: 0.8rem; }
+      .toast {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #111827;
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        display: none;
+      }
+      .muted { color: #6b7280; font-size: 0.8rem; }
     </style>
   </head>
   <body>
-    <h1>PWA iPhone 알림 테스트</h1>
-    <p>
-      iOS에서는 <strong>홈 화면에 추가된 PWA</strong>에서만 알림 권한 요청이 가능합니다.
-    </p>
+    <header>
+      <h1>아이젠하워 투두 리스트</h1>
+      <div class="header-actions">
+        <button id="btn-settings" class="secondary">설정</button>
+        <button id="btn-add">+ 일정 추가</button>
+      </div>
+    </header>
 
-    <button id="btn-install-hint">설치 방법 보기</button>
-    <button id="btn-enable">1) 알림 권한 + 구독</button>
-    <button id="btn-send">2) 테스트 알림 보내기</button>
+    <main>
+      <div id="status" class="muted"></div>
+      <section class="grid" id="quadrants"></section>
+    </main>
 
-    <h3>상태</h3>
-    <div id="status">초기화 중...</div>
+    <dialog id="task-dialog">
+      <form class="dialog-body" id="task-form">
+        <h3 id="form-title">일정 추가</h3>
+        <input type="hidden" id="task-id" />
+        <div class="field"><label>제목 *</label><input id="title" required /></div>
+        <div class="field"><label>설명</label><textarea id="description"></textarea></div>
+        <div class="field">
+          <label>분류 *</label>
+          <select id="quadrant" required>
+            <option value="Q1">Q1 중요+긴급</option>
+            <option value="Q2">Q2 중요+비긴급</option>
+            <option value="Q3">Q3 비중요+긴급</option>
+            <option value="Q4">Q4 비중요+비긴급</option>
+          </select>
+        </div>
+        <div class="inline">
+          <div class="field"><label>날짜</label><input type="date" id="date" /></div>
+          <div class="field"><label>시간</label><input type="time" id="time" /></div>
+        </div>
+        <div class="field"><label>반복</label>
+          <select id="repeatType">
+            <option value="none">없음</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option>
+          </select>
+        </div>
+        <div class="field" id="weekly-wrap" style="display:none">
+          <label>요일 선택</label>
+          <div id="weekly-days" class="inline" style="flex-wrap:wrap"></div>
+        </div>
+        <div class="field" id="monthly-wrap" style="display:none"><label>날짜 선택(1~31)</label><input id="monthly-day" type="number" min="1" max="31" /></div>
+        <div class="field row"><input type="checkbox" id="notificationEnabled" /><label for="notificationEnabled">알림 사용</label></div>
 
+        <div class="field">
+          <label>세부 체크리스트</label>
+          <div id="subtask-editor"></div>
+          <button type="button" id="btn-add-subtask" class="secondary">+ 체크리스트 추가</button>
+        </div>
+
+        <div class="dialog-actions">
+          <div>
+            <button type="button" id="btn-delete" class="danger" style="display:none">삭제</button>
+          </div>
+          <div>
+            <button type="button" class="secondary" id="btn-cancel">취소</button>
+            <button type="submit">저장</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog">
+      <div class="dialog-body">
+        <h3>설정</h3>
+        <div class="row"><input type="checkbox" id="hideCompletedTasks" /><label for="hideCompletedTasks">완료된 일정 숨기기</label></div>
+        <p id="permission-status" class="muted"></p>
+        <div class="dialog-actions">
+          <span></span>
+          <button id="btn-close-settings" class="secondary">닫기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast"></div>
     <script src="/app.js"></script>
   </body>
 </html>
