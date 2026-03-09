@@ -1,30 +1,16 @@
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'PWA 알림';
-  const options = {
-    body: data.body || '새 알림이 도착했습니다.',
-    data: { url: data.url || '/' }
-  };
+const CACHE_NAME = 'eisenhower-pwa-v1';
+const ASSETS = ['/', '/index.html', '/app.js', '/manifest.json'];
 
-  event.waitUntil(self.registration.showNotification(title, options));
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const targetUrl = event.notification.data?.url || '/';
-
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-      return null;
-    })
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });
