@@ -8,21 +8,19 @@ const quadrantMeta = {
   Q4: '비중요+비긴급'
 };
 
-const quadrantDotColors = {
-  Q1: '#2dd4bf',
-  Q2: '#818cf8',
-  Q3: '#f87171',
-  Q4: '#f43f5e'
-};
+const quadrantDotColors = { Q1: '#2dd4bf', Q2: '#818cf8', Q3: '#f87171', Q4: '#f43f5e' };
+const weekKorean = ['일', '월', '화', '수', '목', '금', '토'];
 
 let tasks = load(STORAGE_KEY, []);
 const defaultSettings = {
   hideCompletedTasks: false,
-  appTitle: '🤢 군생활 플래너',
+  appTitle: '⚡ 아이젠하워 플래너',
   quadrantLabels: { ...quadrantMeta }
 };
 
 let settings = normalizeSettings(load(SETTINGS_KEY, defaultSettings));
+let viewFilter = 'all';
+let searchKeyword = '';
 const timers = new Map();
 
 const quadrantsEl = document.getElementById('quadrants');
@@ -31,21 +29,20 @@ const settingsDialog = document.getElementById('settings-dialog');
 const form = document.getElementById('task-form');
 const statusEl = document.getElementById('status');
 const modeBtn = document.getElementById('btn-mode');
-let isEditMode = false;
+const searchInput = document.getElementById('search-input');
 
 const showToast = (msg) => {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.style.display = 'block';
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => { el.style.display = 'none'; }, 1600);
+  showToast.timer = setTimeout(() => { el.style.display = 'none'; }, 1800);
 };
 
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
 }
-
 
 function normalizeSettings(raw) {
   const source = raw || {};
@@ -66,49 +63,35 @@ function getQuadrantLabel(code) {
 }
 
 function syncLabelsToUI() {
-  const titleEl = document.getElementById('app-title-display');
-  if (titleEl) titleEl.textContent = settings.appTitle;
-
-  const select = document.getElementById('quadrant');
-  if (!select) return;
-  [...select.options].forEach((option) => {
-    const code = option.value;
-    if (quadrantMeta[code]) option.textContent = `${code} ${getQuadrantLabel(code)}`;
+  document.getElementById('app-title-display').textContent = settings.appTitle;
+  [...document.getElementById('quadrant').options].forEach((option) => {
+    if (quadrantMeta[option.value]) option.textContent = `${option.value} ${getQuadrantLabel(option.value)}`;
   });
-}
-
-function saveAll() {
-  if (modeBtn) {
-    modeBtn.textContent = isEditMode ? '✓' : '‹';
-    modeBtn.setAttribute('aria-label', isEditMode ? '보기 모드로 전환' : '편집 모드로 전환');
-    modeBtn.setAttribute('aria-pressed', String(isEditMode));
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 function nowIso() { return new Date().toISOString(); }
 function uid() { return crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()); }
+
+function saveAll() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
 
 function getNotificationEligibility(task) {
   return task.notificationEnabled && task.date && task.time;
 }
 
 function requestNotificationPermissionIfNeeded() {
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'default') Notification.requestPermission();
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
 }
 
 function scheduleNotification(task) {
   if (!('Notification' in window)) return;
   clearNotification(task.id);
-  if (!getNotificationEligibility(task)) return;
-  if (Notification.permission !== 'granted') return;
-
+  if (!getNotificationEligibility(task) || Notification.permission !== 'granted') return;
   const when = new Date(`${task.date}T${task.time}:00`).getTime();
   const delay = when - Date.now();
   if (delay <= 0 || delay > 2147483647) return;
-
   const id = setTimeout(() => {
     new Notification(`할 일 알림: ${task.title}`, { body: task.description || '일정 시간이 되었습니다.' });
   }, delay);
@@ -123,9 +106,25 @@ function clearNotification(taskId) {
 }
 
 function repeatText(task) {
-  if (task.repeatType === 'weekly') return `매주 (${(task.repeatDaysOfWeek || []).join(',')})`;
+  if (task.repeatType === 'weekly') {
+    const label = (task.repeatDaysOfWeek || []).map((d) => weekKorean[d]).join(',');
+    return `매주 (${label || '-'})`;
+  }
   if (task.repeatType === 'monthly') return `매월 ${task.repeatDayOfMonth || '-'}일`;
   return ({ none: '반복없음', daily: '매일' })[task.repeatType] || '반복없음';
+}
+
+function renderSubtaskPreview(subtasks) {
+  if (!subtasks.length) return '';
+  const previewCount = 2;
+  const preview = subtasks.slice(0, previewCount)
+    .map((s) => `<li style="text-decoration:${s.isCompleted ? 'line-through' : 'none'}">${escapeHtml(s.text)}</li>`)
+    .join('');
+  const remain = subtasks.length - previewCount;
+  return `
+    <ul class="subtask-list">${preview}</ul>
+    ${remain > 0 ? `<p class="subtask-more">외 ${remain}개</p>` : ''}
+  `;
 }
 
 function sortTasks(list) {
@@ -139,36 +138,53 @@ function sortTasks(list) {
   });
 }
 
+function isToday(task) {
+  if (!task.date) return false;
+  const today = new Date();
+  const t = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return task.date === t;
+}
+
+function taskMatchesFilters(task) {
+  if (settings.hideCompletedTasks && task.isCompleted) return false;
+  if (viewFilter === 'active' && task.isCompleted) return false;
+  if (viewFilter === 'completed' && !task.isCompleted) return false;
+  if (viewFilter === 'today' && !isToday(task)) return false;
+  if (!searchKeyword) return true;
+
+  const haystack = [task.title, task.description, ...(task.subtasks || []).map((s) => s.text)]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(searchKeyword.toLowerCase());
+}
+
 function render() {
-  const visible = settings.hideCompletedTasks ? tasks.filter((t) => !t.isCompleted) : tasks;
   quadrantsEl.innerHTML = '';
+  const visible = tasks.filter(taskMatchesFilters);
 
   Object.entries(quadrantMeta).forEach(([code]) => {
-    const label = getQuadrantLabel(code);
     const section = document.createElement('section');
     section.className = 'quadrant';
+    const label = getQuadrantLabel(code);
     section.innerHTML = `
       <div class="quadrant-head">
-        <div class="quadrant-title">
-          <span class="quadrant-dot" style="background:${quadrantDotColors[code]}"></span>
-          <h2>${label}</h2>
-        </div>
-        <button class="icon-btn" data-action="quick-add" data-quadrant="${code}" aria-label="${label}에 일정 추가">+</button>
+        <div class="quadrant-title"><span class="quadrant-dot" style="background:${quadrantDotColors[code]}"></span><h2>${label}</h2></div>
+        <button class="icon-btn" data-action="quick-add" data-quadrant="${code}" aria-label="${label}에 일정 추가">＋</button>
       </div>
     `;
 
     const list = sortTasks(visible.filter((t) => t.quadrant === code));
-    if (list.length === 0) {
+    if (!list.length) {
       const empty = document.createElement('p');
       empty.className = 'muted';
-      empty.textContent = '일정 없음';
+      empty.textContent = '조건에 맞는 일정 없음';
       section.appendChild(empty);
     }
 
     list.forEach((task) => {
+      const subDone = task.subtasks.filter((s) => s.isCompleted).length;
       const card = document.createElement('article');
       card.className = `task-card ${task.isCompleted ? 'completed' : ''}`;
-      const subDone = task.subtasks.filter((s) => s.isCompleted).length;
       card.innerHTML = `
         <div class="task-head">
           <input type="checkbox" ${task.isCompleted ? 'checked' : ''} data-action="toggle" data-id="${task.id}" />
@@ -177,7 +193,7 @@ function render() {
         </div>
         ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
         <p class="task-meta">${task.date || '날짜없음'} ${task.time || ''} · ${repeatText(task)} · 체크리스트 ${subDone}/${task.subtasks.length}</p>
-        ${task.subtasks.length ? `<ul class="subtask-list">${task.subtasks.map((s)=>`<li style="text-decoration:${s.isCompleted?'line-through':'none'}">${escapeHtml(s.text)}</li>`).join('')}</ul>` : ''}
+        ${renderSubtaskPreview(task.subtasks)}
       `;
       section.appendChild(card);
     });
@@ -185,22 +201,21 @@ function render() {
     quadrantsEl.appendChild(section);
   });
 
-  statusEl.textContent = `전체 ${tasks.length}개 · 완료 ${tasks.filter((t) => t.isCompleted).length}개 · 진행중 ${tasks.filter((t) => !t.isCompleted).length}개`;
+  statusEl.textContent = `표시 ${visible.length}개 / 전체 ${tasks.length}개 · 완료 ${tasks.filter((t) => t.isCompleted).length}개`;
 }
 
 function escapeHtml(str) {
-  return str.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 function openTaskDialog(task, presetQuadrant) {
   form.reset();
   document.getElementById('subtask-editor').innerHTML = '';
   document.getElementById('weekly-days').innerHTML = '';
-  ['일','월','화','수','목','금','토'].forEach((d, i) => {
-    const id = `day-${i}`;
+  weekKorean.forEach((d, i) => {
     const row = document.createElement('label');
     row.className = 'row';
-    row.innerHTML = `<input type="checkbox" value="${i}" id="${id}" />${d}`;
+    row.innerHTML = `<input type="checkbox" value="${i}" />${d}`;
     document.getElementById('weekly-days').appendChild(row);
   });
 
@@ -253,13 +268,7 @@ function collectSubtasks() {
   return [...document.querySelectorAll('#subtask-editor .row')]
     .map((row) => {
       const [check, text] = row.querySelectorAll('input');
-      return {
-        id: uid(),
-        text: text.value.trim(),
-        isCompleted: check.checked,
-        createdAt: nowIso(),
-        updatedAt: nowIso()
-      };
+      return { id: uid(), text: text.value.trim(), isCompleted: check.checked, createdAt: nowIso(), updatedAt: nowIso() };
     })
     .filter((s) => s.text);
 }
@@ -314,14 +323,7 @@ form.addEventListener('submit', (e) => {
   taskDialog.close();
 });
 
-const addBtn = document.getElementById('btn-add');
-if (addBtn) addBtn.addEventListener('click', () => openTaskDialog());
-if (modeBtn) {
-  modeBtn.addEventListener('click', () => {
-    isEditMode = !isEditMode;
-    saveAll();
-  });
-}
+document.getElementById('btn-add').addEventListener('click', () => openTaskDialog());
 document.getElementById('btn-cancel').addEventListener('click', () => taskDialog.close());
 document.getElementById('btn-delete').addEventListener('click', () => {
   const id = document.getElementById('task-id').value;
@@ -331,6 +333,33 @@ document.getElementById('btn-delete').addEventListener('click', () => {
   render();
   taskDialog.close();
 });
+
+modeBtn.addEventListener('click', () => {
+  viewFilter = viewFilter === 'today' ? 'all' : 'today';
+  updateFilterUI();
+  render();
+});
+
+document.getElementById('filter-chips').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-filter]');
+  if (!btn) return;
+  viewFilter = btn.dataset.filter;
+  updateFilterUI();
+  render();
+});
+
+searchInput.addEventListener('input', (e) => {
+  searchKeyword = e.target.value.trim();
+  render();
+});
+
+function updateFilterUI() {
+  [...document.querySelectorAll('#filter-chips .chip')].forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.filter === viewFilter);
+  });
+  modeBtn.style.opacity = viewFilter === 'today' ? '1' : '0.72';
+}
+
 document.getElementById('btn-add-subtask').addEventListener('click', () => addSubtaskInput());
 document.getElementById('repeatType').addEventListener('change', updateRepeatVisibility);
 
@@ -368,19 +397,15 @@ quadrantsEl.addEventListener('click', (e) => {
     return;
   }
   const id = target.dataset.id;
-  const action = target.dataset.action;
-  if (!id || !action) return;
+  if (!id || target.dataset.action !== 'edit') return;
   const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-
-  if (action === 'edit') openTaskDialog(task);
+  if (task) openTaskDialog(task);
 });
 
 quadrantsEl.addEventListener('change', (e) => {
   const target = e.target;
   if (target.dataset.action !== 'toggle') return;
-  const id = target.dataset.id;
-  const task = tasks.find((t) => t.id === id);
+  const task = tasks.find((t) => t.id === target.dataset.id);
   if (!task) return;
   task.isCompleted = target.checked;
   task.completedAt = target.checked ? nowIso() : null;
@@ -402,6 +427,7 @@ if ('serviceWorker' in navigator) {
 }
 
 syncLabelsToUI();
+updateFilterUI();
 requestNotificationPermissionIfNeeded();
 tasks.forEach(scheduleNotification);
 render();
