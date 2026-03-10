@@ -60,18 +60,41 @@
       .chip.active { background: linear-gradient(135deg, #22d3ee, #2563eb); color: #fff; border-color: transparent; }
       #status { margin: 10px 2px; color: #94a3b8; font-size: 0.8rem; }
       .grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .quadrant { border-radius: 20px; overflow: hidden; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(255,255,255,.08); min-height: 260px; }
+      .quadrant { border-radius: 20px; overflow: hidden; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(255,255,255,.08); min-height: 240px; }
       .quadrant-head { padding: 10px; display: flex; justify-content: space-between; align-items: center; background: rgba(15,23,42,.95); }
       .quadrant-title { display: flex; align-items: center; gap: 8px; }
       .quadrant-dot { width: 10px; height: 10px; border-radius: 999px; }
       .quadrant h2 { margin: 0; font-size: 0.8rem; color: #cbd5e1; }
       .icon-btn, .edit-btn { background: transparent; border: 0; color: #cbd5e1; }
-      .task-card { padding: 10px; border-top: 1px solid rgba(255,255,255,.08); }
-      .task-head { display: flex; align-items: flex-start; gap: 8px; }
-      .task-title { font-size: 0.92rem; font-weight: 700; line-height: 1.35; flex: 1; word-break: break-word; }
+      .edit-btn { white-space: nowrap; padding: 0; min-height: auto; font-size: 0.72rem; }
+      .task-card { padding: 10px; border-top: 1px solid rgba(255,255,255,.08); display: grid; gap: 4px; }
+      .task-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+      .task-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        line-height: 1.35;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
       .completed .task-title { text-decoration: line-through; opacity: 0.52; }
-      .task-meta, .task-desc, .subtask-list { margin: 6px 0 0; font-size: 0.75rem; color: #94a3b8; }
+      .task-meta, .task-desc, .subtask-list { margin: 4px 0 0; font-size: 0.75rem; color: #94a3b8; }
+      .task-desc {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .task-meta {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .subtask-list { padding-left: 16px; }
+      .subtask-more { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
       .muted { color: #64748b; font-size: .76rem; margin: 10px; }
       dialog {
         width: min(680px, calc(100vw - 16px));
@@ -107,7 +130,8 @@
         background: linear-gradient(135deg, #22d3ee, #2563eb); color: white;
         box-shadow: 0 10px 24px rgba(14,165,233,.4);
       }
-      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .quadrant { min-height: 170px; } }
+      @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+      @media (max-width: 760px) { .quadrant { min-height: 170px; } }
     </style>
   </head>
   <body>

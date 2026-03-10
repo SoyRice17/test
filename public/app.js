@@ -114,6 +114,19 @@ function repeatText(task) {
   return ({ none: '반복없음', daily: '매일' })[task.repeatType] || '반복없음';
 }
 
+function renderSubtaskPreview(subtasks) {
+  if (!subtasks.length) return '';
+  const previewCount = 2;
+  const preview = subtasks.slice(0, previewCount)
+    .map((s) => `<li style="text-decoration:${s.isCompleted ? 'line-through' : 'none'}">${escapeHtml(s.text)}</li>`)
+    .join('');
+  const remain = subtasks.length - previewCount;
+  return `
+    <ul class="subtask-list">${preview}</ul>
+    ${remain > 0 ? `<p class="subtask-more">외 ${remain}개</p>` : ''}
+  `;
+}
+
 function sortTasks(list) {
   return [...list].sort((a, b) => {
     if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
@@ -180,7 +193,7 @@ function render() {
         </div>
         ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
         <p class="task-meta">${task.date || '날짜없음'} ${task.time || ''} · ${repeatText(task)} · 체크리스트 ${subDone}/${task.subtasks.length}</p>
-        ${task.subtasks.length ? `<ul class="subtask-list">${task.subtasks.map((s) => `<li style="text-decoration:${s.isCompleted ? 'line-through' : 'none'}">${escapeHtml(s.text)}</li>`).join('')}</ul>` : ''}
+        ${renderSubtaskPreview(task.subtasks)}
       `;
       section.appendChild(card);
     });
