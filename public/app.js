@@ -8,8 +8,21 @@ const quadrantMeta = {
   Q4: '비중요+비긴급'
 };
 
+const quadrantDotColors = {
+  Q1: '#2dd4bf',
+  Q2: '#818cf8',
+  Q3: '#f87171',
+  Q4: '#f43f5e'
+};
+
 let tasks = load(STORAGE_KEY, []);
-let settings = load(SETTINGS_KEY, { hideCompletedTasks: false });
+const defaultSettings = {
+  hideCompletedTasks: false,
+  appTitle: '🤢 군생활 플래너',
+  quadrantLabels: { ...quadrantMeta }
+};
+
+let settings = normalizeSettings(load(SETTINGS_KEY, defaultSettings));
 const timers = new Map();
 
 const quadrantsEl = document.getElementById('quadrants');
@@ -29,6 +42,37 @@ const showToast = (msg) => {
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
+}
+
+
+function normalizeSettings(raw) {
+  const source = raw || {};
+  return {
+    hideCompletedTasks: !!source.hideCompletedTasks,
+    appTitle: (source.appTitle || defaultSettings.appTitle).trim() || defaultSettings.appTitle,
+    quadrantLabels: {
+      Q1: source.quadrantLabels?.Q1?.trim() || quadrantMeta.Q1,
+      Q2: source.quadrantLabels?.Q2?.trim() || quadrantMeta.Q2,
+      Q3: source.quadrantLabels?.Q3?.trim() || quadrantMeta.Q3,
+      Q4: source.quadrantLabels?.Q4?.trim() || quadrantMeta.Q4
+    }
+  };
+}
+
+function getQuadrantLabel(code) {
+  return settings.quadrantLabels?.[code] || quadrantMeta[code];
+}
+
+function syncLabelsToUI() {
+  const titleEl = document.getElementById('app-title-display');
+  if (titleEl) titleEl.textContent = settings.appTitle;
+
+  const select = document.getElementById('quadrant');
+  if (!select) return;
+  [...select.options].forEach((option) => {
+    const code = option.value;
+    if (quadrantMeta[code]) option.textContent = `${code} ${getQuadrantLabel(code)}`;
+  });
 }
 
 function saveAll() {
@@ -92,10 +136,19 @@ function render() {
   const visible = settings.hideCompletedTasks ? tasks.filter((t) => !t.isCompleted) : tasks;
   quadrantsEl.innerHTML = '';
 
-  Object.entries(quadrantMeta).forEach(([code, label]) => {
+  Object.entries(quadrantMeta).forEach(([code]) => {
+    const label = getQuadrantLabel(code);
     const section = document.createElement('section');
     section.className = 'quadrant';
-    section.innerHTML = `<h2>${code} ${label}</h2>`;
+    section.innerHTML = `
+      <div class="quadrant-head">
+        <div class="quadrant-title">
+          <span class="quadrant-dot" style="background:${quadrantDotColors[code]}"></span>
+          <h2>${label}</h2>
+        </div>
+        <button class="icon-btn" data-action="quick-add" data-quadrant="${code}" aria-label="${label}에 일정 추가">+</button>
+      </div>
+    `;
 
     const list = sortTasks(visible.filter((t) => t.quadrant === code));
     if (list.length === 0) {
@@ -113,7 +166,7 @@ function render() {
         <div class="task-head">
           <input type="checkbox" ${task.isCompleted ? 'checked' : ''} data-action="toggle" data-id="${task.id}" />
           <span class="task-title">${escapeHtml(task.title)}</span>
-          <button data-action="edit" data-id="${task.id}" class="secondary">수정</button>
+          <button data-action="edit" data-id="${task.id}" class="edit-btn">수정</button>
         </div>
         ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
         <p class="task-meta">${task.date || '날짜없음'} ${task.time || ''} · ${repeatText(task)} · 체크리스트 ${subDone}/${task.subtasks.length}</p>
@@ -125,14 +178,14 @@ function render() {
     quadrantsEl.appendChild(section);
   });
 
-  statusEl.textContent = `전체 ${tasks.length}개 일정 / 완료 ${tasks.filter((t) => t.isCompleted).length}개`;
+  statusEl.textContent = `전체 ${tasks.length}개 · 완료 ${tasks.filter((t) => t.isCompleted).length}개 · 진행중 ${tasks.filter((t) => !t.isCompleted).length}개`;
 }
 
 function escapeHtml(str) {
   return str.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function openTaskDialog(task) {
+function openTaskDialog(task, presetQuadrant) {
   form.reset();
   document.getElementById('subtask-editor').innerHTML = '';
   document.getElementById('weekly-days').innerHTML = '';
@@ -163,6 +216,8 @@ function openTaskDialog(task) {
       if (el) el.checked = true;
     });
     task.subtasks.forEach(addSubtaskInput);
+  } else if (presetQuadrant) {
+    document.getElementById('quadrant').value = presetQuadrant;
   }
 
   updateRepeatVisibility();
@@ -267,6 +322,11 @@ document.getElementById('repeatType').addEventListener('change', updateRepeatVis
 
 document.getElementById('btn-settings').addEventListener('click', () => {
   document.getElementById('hideCompletedTasks').checked = settings.hideCompletedTasks;
+  document.getElementById('appTitleInput').value = settings.appTitle;
+  document.getElementById('labelQ1').value = getQuadrantLabel('Q1');
+  document.getElementById('labelQ2').value = getQuadrantLabel('Q2');
+  document.getElementById('labelQ3').value = getQuadrantLabel('Q3');
+  document.getElementById('labelQ4').value = getQuadrantLabel('Q4');
   document.getElementById('permission-status').textContent = `알림 권한 상태: ${('Notification' in window) ? Notification.permission : '지원 안 함'}`;
   settingsDialog.showModal();
 });
@@ -274,6 +334,14 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 document.getElementById('btn-close-settings').addEventListener('click', (e) => {
   e.preventDefault();
   settings.hideCompletedTasks = document.getElementById('hideCompletedTasks').checked;
+  settings.appTitle = document.getElementById('appTitleInput').value.trim() || defaultSettings.appTitle;
+  settings.quadrantLabels = {
+    Q1: document.getElementById('labelQ1').value.trim() || quadrantMeta.Q1,
+    Q2: document.getElementById('labelQ2').value.trim() || quadrantMeta.Q2,
+    Q3: document.getElementById('labelQ3').value.trim() || quadrantMeta.Q3,
+    Q4: document.getElementById('labelQ4').value.trim() || quadrantMeta.Q4
+  };
+  syncLabelsToUI();
   saveAll();
   render();
   settingsDialog.close();
@@ -281,6 +349,10 @@ document.getElementById('btn-close-settings').addEventListener('click', (e) => {
 
 quadrantsEl.addEventListener('click', (e) => {
   const target = e.target;
+  if (target.dataset.action === 'quick-add') {
+    openTaskDialog(null, target.dataset.quadrant);
+    return;
+  }
   const id = target.dataset.id;
   const action = target.dataset.action;
   if (!id || !action) return;
@@ -315,6 +387,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+syncLabelsToUI();
 requestNotificationPermissionIfNeeded();
 tasks.forEach(scheduleNotification);
 render();
