@@ -114,15 +114,21 @@ function repeatText(task) {
   return ({ none: '반복없음', daily: '매일' })[task.repeatType] || '반복없음';
 }
 
-function renderSubtaskPreview(subtasks) {
+function renderSubtaskPreview(task) {
+  const subtasks = task.subtasks || [];
   if (!subtasks.length) return '';
-  const previewCount = 2;
+  const previewCount = 3;
   const preview = subtasks.slice(0, previewCount)
-    .map((s) => `<li style="text-decoration:${s.isCompleted ? 'line-through' : 'none'}">${escapeHtml(s.text)}</li>`)
+    .map((subtask) => `
+      <label class="subtask-item">
+        <input type="checkbox" data-action="toggle-subtask" data-id="${task.id}" data-subtask-id="${subtask.id}" ${subtask.isCompleted ? 'checked' : ''} />
+        <span style="text-decoration:${subtask.isCompleted ? 'line-through' : 'none'}">${escapeHtml(subtask.text)}</span>
+      </label>
+    `)
     .join('');
   const remain = subtasks.length - previewCount;
   return `
-    <ul class="subtask-list">${preview}</ul>
+    <div class="subtask-list">${preview}</div>
     ${remain > 0 ? `<p class="subtask-more">외 ${remain}개</p>` : ''}
   `;
 }
@@ -193,7 +199,7 @@ function render() {
         </div>
         ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
         <p class="task-meta">${task.date || '날짜없음'} ${task.time || ''} · ${repeatText(task)} · 체크리스트 ${subDone}/${task.subtasks.length}</p>
-        ${renderSubtaskPreview(task.subtasks)}
+        ${renderSubtaskPreview(task)}
       `;
       section.appendChild(card);
     });
@@ -249,6 +255,8 @@ function openTaskDialog(task, presetQuadrant) {
 function addSubtaskInput(subtask) {
   const row = document.createElement('div');
   row.className = 'row';
+  row.dataset.subtaskId = subtask?.id || uid();
+  row.dataset.createdAt = subtask?.createdAt || nowIso();
   row.innerHTML = `
     <input type="checkbox" ${subtask?.isCompleted ? 'checked' : ''} />
     <input type="text" placeholder="세부 항목" value="${escapeHtml(subtask?.text || '')}" />
@@ -268,7 +276,8 @@ function collectSubtasks() {
   return [...document.querySelectorAll('#subtask-editor .row')]
     .map((row) => {
       const [check, text] = row.querySelectorAll('input');
-      return { id: uid(), text: text.value.trim(), isCompleted: check.checked, createdAt: nowIso(), updatedAt: nowIso() };
+      const subtaskId = row.dataset.subtaskId || uid();
+      return { id: subtaskId, text: text.value.trim(), isCompleted: check.checked, createdAt: row.dataset.createdAt || nowIso(), updatedAt: nowIso() };
     })
     .filter((s) => s.text);
 }
@@ -416,6 +425,21 @@ quadrantsEl.addEventListener('change', (e) => {
   } else {
     scheduleNotification(task);
   }
+  saveAll();
+  render();
+});
+
+
+quadrantsEl.addEventListener('change', (e) => {
+  const target = e.target;
+  if (target.dataset.action !== 'toggle-subtask') return;
+  const task = tasks.find((t) => t.id === target.dataset.id);
+  if (!task) return;
+  const subtask = (task.subtasks || []).find((s) => s.id === target.dataset.subtaskId);
+  if (!subtask) return;
+  subtask.isCompleted = target.checked;
+  subtask.updatedAt = nowIso();
+  task.updatedAt = nowIso();
   saveAll();
   render();
 });

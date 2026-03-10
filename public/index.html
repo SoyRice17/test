@@ -41,7 +41,10 @@
         padding: 10px;
         margin-bottom: 10px;
       }
-      .search-input, input, textarea, select {
+      .search-input,
+      input:not([type='checkbox']):not([type='radio']),
+      textarea,
+      select {
         width: 100%;
         border-radius: 12px;
         border: 1px solid rgba(148, 163, 184, 0.35);
@@ -49,6 +52,14 @@
         color: #f8fafc;
         font-size: 16px;
         padding: 11px 12px;
+      }
+      input[type='checkbox'] {
+        width: 20px;
+        height: 20px;
+        margin: 0;
+        padding: 0;
+        accent-color: #38bdf8;
+        flex: 0 0 auto;
       }
       textarea { min-height: 88px; resize: vertical; }
       .inline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -104,8 +115,9 @@
         background: #0b1220;
         color: #e2e8f0;
         max-height: 88dvh;
+        padding: 0;
       }
-      .dialog-body { padding: 14px; }
+      .dialog-body { padding: 14px; overflow-x: hidden; }
       .field { margin-bottom: 9px; }
       .field label { display: block; font-size: 0.8rem; margin-bottom: 5px; color: #cbd5e1; }
       button {
@@ -116,8 +128,13 @@
       button.secondary { background: #0f172a; }
       button.danger { background: #7f1d1d; border-color: #991b1b; }
       .dialog-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-      .row { display: flex; gap: 8px; align-items: center; }
-      .row input[type='text'] { flex: 1; }
+      .row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+      .row input[type='text'] { flex: 1; min-width: 0; }
+      .checkbox-row label { margin: 0; }
+      #subtask-editor { display: grid; gap: 8px; margin-bottom: 8px; }
+      #subtask-editor .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+      .subtask-item { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+      .subtask-item span { overflow-wrap: anywhere; }
       #weekly-days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
       .toast {
         position: fixed; z-index: 50; left: 50%; transform: translateX(-50%);
@@ -182,7 +199,7 @@
         <div class="field"><label>반복</label><select id="repeatType"><option value="none">없음</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></select></div>
         <div class="field" id="weekly-wrap" style="display:none"><label>요일 선택</label><div id="weekly-days"></div></div>
         <div class="field" id="monthly-wrap" style="display:none"><label>날짜 선택(1~31)</label><input id="monthly-day" type="number" min="1" max="31" /></div>
-        <div class="field row"><input type="checkbox" id="notificationEnabled" /><label for="notificationEnabled">알림 사용</label></div>
+        <div class="field row checkbox-row"><input type="checkbox" id="notificationEnabled" /><label for="notificationEnabled">알림 사용</label></div>
         <div class="field">
           <label>세부 체크리스트</label>
           <div id="subtask-editor"></div>
@@ -209,7 +226,7 @@
           <input id="labelQ3" placeholder="Q3 이름" maxlength="20" />
           <input id="labelQ4" placeholder="Q4 이름" maxlength="20" />
         </div>
-        <div class="row"><input type="checkbox" id="hideCompletedTasks" /><label for="hideCompletedTasks">완료된 일정 숨기기</label></div>
+        <div class="row checkbox-row"><input type="checkbox" id="hideCompletedTasks" /><label for="hideCompletedTasks">완료된 일정 숨기기</label></div>
         <p id="permission-status" class="muted"></p>
         <div class="dialog-actions"><span></span><button id="btn-close-settings" class="secondary">닫기</button></div>
       </div>
