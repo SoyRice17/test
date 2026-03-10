@@ -30,6 +30,8 @@ const taskDialog = document.getElementById('task-dialog');
 const settingsDialog = document.getElementById('settings-dialog');
 const form = document.getElementById('task-form');
 const statusEl = document.getElementById('status');
+const modeBtn = document.getElementById('btn-mode');
+let isEditMode = false;
 
 const showToast = (msg) => {
   const el = document.getElementById('toast');
@@ -75,8 +77,12 @@ function syncLabelsToUI() {
   });
 }
 
-  modeBtn.textContent = isEditMode ? '✓' : '‹';
-  modeBtn.setAttribute('aria-label', isEditMode ? '보기 모드로 전환' : '편집 모드로 전환');
+function saveAll() {
+  if (modeBtn) {
+    modeBtn.textContent = isEditMode ? '✓' : '‹';
+    modeBtn.setAttribute('aria-label', isEditMode ? '보기 모드로 전환' : '편집 모드로 전환');
+    modeBtn.setAttribute('aria-pressed', String(isEditMode));
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
@@ -308,7 +314,14 @@ form.addEventListener('submit', (e) => {
   taskDialog.close();
 });
 
-document.getElementById('btn-add').addEventListener('click', () => openTaskDialog());
+const addBtn = document.getElementById('btn-add');
+if (addBtn) addBtn.addEventListener('click', () => openTaskDialog());
+if (modeBtn) {
+  modeBtn.addEventListener('click', () => {
+    isEditMode = !isEditMode;
+    saveAll();
+  });
+}
 document.getElementById('btn-cancel').addEventListener('click', () => taskDialog.close());
 document.getElementById('btn-delete').addEventListener('click', () => {
   const id = document.getElementById('task-id').value;
