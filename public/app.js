@@ -75,7 +75,8 @@ function syncLabelsToUI() {
   });
 }
 
-function saveAll() {
+  modeBtn.textContent = isEditMode ? '✓' : '‹';
+  modeBtn.setAttribute('aria-label', isEditMode ? '보기 모드로 전환' : '편집 모드로 전환');
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
