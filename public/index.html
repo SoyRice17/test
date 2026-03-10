@@ -51,7 +51,7 @@
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.85rem;
       }
       .quadrant {
@@ -126,6 +126,13 @@
       .inline > * { flex: 1; }
       .row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
       .dialog-actions { display: flex; justify-content: space-between; margin-top: 0.8rem; }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-bottom: 0.7rem;
+      }
       .toast {
         position: fixed;
         bottom: 16px;
@@ -148,7 +155,7 @@
   </head>
   <body>
     <header>
-      <h1>🤢 군생활 플래너</h1>
+      <h1 id="app-title-display">🤢 군생활 플래너</h1>
       <div class="header-actions">
         <button id="btn-settings" class="secondary">설정</button>
         <button id="btn-add" class="primary">+ 일정</button>
@@ -212,6 +219,20 @@
     <dialog id="settings-dialog">
       <div class="dialog-body">
         <h3>설정</h3>
+
+        <div class="field">
+          <label for="appTitleInput">보드 제목</label>
+          <input id="appTitleInput" maxlength="30" placeholder="예: 군생활" />
+        </div>
+        <div class="field">
+          <label>4분면 이름 커스텀</label>
+          <div class="settings-grid">
+            <input id="labelQ1" placeholder="Q1 이름" maxlength="20" />
+            <input id="labelQ2" placeholder="Q2 이름" maxlength="20" />
+            <input id="labelQ3" placeholder="Q3 이름" maxlength="20" />
+            <input id="labelQ4" placeholder="Q4 이름" maxlength="20" />
+          </div>
+        </div>
         <div class="row"><input type="checkbox" id="hideCompletedTasks" /><label for="hideCompletedTasks">완료된 일정 숨기기</label></div>
         <p id="permission-status" class="muted"></p>
         <div class="dialog-actions">

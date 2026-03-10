@@ -16,7 +16,13 @@ const quadrantDotColors = {
 };
 
 let tasks = load(STORAGE_KEY, []);
-let settings = load(SETTINGS_KEY, { hideCompletedTasks: false });
+const defaultSettings = {
+  hideCompletedTasks: false,
+  appTitle: '🤢 군생활 플래너',
+  quadrantLabels: { ...quadrantMeta }
+};
+
+let settings = normalizeSettings(load(SETTINGS_KEY, defaultSettings));
 const timers = new Map();
 
 const quadrantsEl = document.getElementById('quadrants');
@@ -36,6 +42,37 @@ const showToast = (msg) => {
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
+}
+
+
+function normalizeSettings(raw) {
+  const source = raw || {};
+  return {
+    hideCompletedTasks: !!source.hideCompletedTasks,
+    appTitle: (source.appTitle || defaultSettings.appTitle).trim() || defaultSettings.appTitle,
+    quadrantLabels: {
+      Q1: source.quadrantLabels?.Q1?.trim() || quadrantMeta.Q1,
+      Q2: source.quadrantLabels?.Q2?.trim() || quadrantMeta.Q2,
+      Q3: source.quadrantLabels?.Q3?.trim() || quadrantMeta.Q3,
+      Q4: source.quadrantLabels?.Q4?.trim() || quadrantMeta.Q4
+    }
+  };
+}
+
+function getQuadrantLabel(code) {
+  return settings.quadrantLabels?.[code] || quadrantMeta[code];
+}
+
+function syncLabelsToUI() {
+  const titleEl = document.getElementById('app-title-display');
+  if (titleEl) titleEl.textContent = settings.appTitle;
+
+  const select = document.getElementById('quadrant');
+  if (!select) return;
+  [...select.options].forEach((option) => {
+    const code = option.value;
+    if (quadrantMeta[code]) option.textContent = `${code} ${getQuadrantLabel(code)}`;
+  });
 }
 
 function saveAll() {
@@ -99,7 +136,8 @@ function render() {
   const visible = settings.hideCompletedTasks ? tasks.filter((t) => !t.isCompleted) : tasks;
   quadrantsEl.innerHTML = '';
 
-  Object.entries(quadrantMeta).forEach(([code, label]) => {
+  Object.entries(quadrantMeta).forEach(([code]) => {
+    const label = getQuadrantLabel(code);
     const section = document.createElement('section');
     section.className = 'quadrant';
     section.innerHTML = `
@@ -284,6 +322,11 @@ document.getElementById('repeatType').addEventListener('change', updateRepeatVis
 
 document.getElementById('btn-settings').addEventListener('click', () => {
   document.getElementById('hideCompletedTasks').checked = settings.hideCompletedTasks;
+  document.getElementById('appTitleInput').value = settings.appTitle;
+  document.getElementById('labelQ1').value = getQuadrantLabel('Q1');
+  document.getElementById('labelQ2').value = getQuadrantLabel('Q2');
+  document.getElementById('labelQ3').value = getQuadrantLabel('Q3');
+  document.getElementById('labelQ4').value = getQuadrantLabel('Q4');
   document.getElementById('permission-status').textContent = `알림 권한 상태: ${('Notification' in window) ? Notification.permission : '지원 안 함'}`;
   settingsDialog.showModal();
 });
@@ -291,6 +334,14 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 document.getElementById('btn-close-settings').addEventListener('click', (e) => {
   e.preventDefault();
   settings.hideCompletedTasks = document.getElementById('hideCompletedTasks').checked;
+  settings.appTitle = document.getElementById('appTitleInput').value.trim() || defaultSettings.appTitle;
+  settings.quadrantLabels = {
+    Q1: document.getElementById('labelQ1').value.trim() || quadrantMeta.Q1,
+    Q2: document.getElementById('labelQ2').value.trim() || quadrantMeta.Q2,
+    Q3: document.getElementById('labelQ3').value.trim() || quadrantMeta.Q3,
+    Q4: document.getElementById('labelQ4').value.trim() || quadrantMeta.Q4
+  };
+  syncLabelsToUI();
   saveAll();
   render();
   settingsDialog.close();
@@ -336,6 +387,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+syncLabelsToUI();
 requestNotificationPermissionIfNeeded();
 tasks.forEach(scheduleNotification);
 render();
